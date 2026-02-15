@@ -494,6 +494,116 @@
             display: none;
         }
 
+        .frog.sinking {
+            animation: frogSink 4.5s ease-in forwards;
+        }
+
+        @keyframes frogSink {
+            0% {
+                transform: translateY(0) scale(1);
+                opacity: 1;
+            }
+            100% {
+                transform: translateY(0) scale(0.1);
+                opacity: 0;
+            }
+        }
+
+        .pike-eyes {
+            position: absolute;
+            display: flex;
+            gap: 30px;
+            opacity: 0;
+            pointer-events: none;
+            z-index: 5;
+        }
+
+        .pike-eyes.show {
+            animation: pikeRise 4.5s ease-out forwards;
+        }
+
+        .pike-eye {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            background: radial-gradient(circle at 40% 40%, #ffb3b3, #ff2a2a 60%, #7a0000 100%);
+            box-shadow: 0 0 12px rgba(255, 0, 0, 0.7), 0 0 24px rgba(255, 0, 0, 0.4);
+        }
+
+        .pike-head {
+            position: absolute;
+            width: 110px;
+            height: 70px;
+            left: 50%;
+            top: 10px;
+            transform: translateX(-50%);
+            border-radius: 40px 40px 10px 10px;
+            background: radial-gradient(circle at 50% 20%, rgba(120, 170, 150, 0.35), rgba(20, 60, 40, 0.6));
+            border: 2px solid rgba(10, 35, 20, 0.7);
+            box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.35);
+            clip-path: polygon(0 60%, 8% 40%, 35% 20%, 50% 0, 65% 20%, 92% 40%, 100% 60%, 85% 100%, 15% 100%);
+        }
+
+        .pike-mouth {
+            position: absolute;
+            width: 80px;
+            height: 20px;
+            left: 50%;
+            bottom: 6px;
+            transform: translateX(-50%);
+            border-radius: 0 0 60px 60px;
+            background: rgba(10, 20, 30, 0.55);
+        }
+
+        .pike-teeth {
+            position: absolute;
+            width: 80px;
+            height: 18px;
+            left: 50%;
+            bottom: 6px;
+            transform: translateX(-50%);
+            display: flex;
+            justify-content: space-between;
+            gap: 4px;
+        }
+
+        .pike-tooth {
+            width: 0;
+            height: 0;
+            border-left: 3px solid transparent;
+            border-right: 3px solid transparent;
+            border-top: 12px solid rgba(240, 240, 240, 0.95);
+            filter: drop-shadow(0 0 2px rgba(255, 255, 255, 0.4));
+        }
+
+        .pike-eye {
+            width: 18px;
+            height: 18px;
+        }
+
+        .pike-eye.left {
+            position: absolute;
+            left: 26px;
+            top: 8px;
+        }
+
+        .pike-eye.right {
+            position: absolute;
+            right: 26px;
+            top: 8px;
+        }
+
+        @keyframes pikeRise {
+            0% {
+                opacity: 0;
+                transform: translate(-50%, 100%) scale(0.4);
+            }
+            100% {
+                opacity: 1;
+                transform: translate(-50%, 40%) scale(1.05);
+            }
+        }
+
     </style>
 </head>
 <body>
@@ -511,6 +621,22 @@
         
         <div class="game-container">
             <div class="pond" id="pond"></div>
+            <div class="pike-eyes" id="pikeEyes" aria-hidden="true">
+                <div class="pike-head">
+                    <div class="pike-eye left"></div>
+                    <div class="pike-eye right"></div>
+                    <div class="pike-mouth"></div>
+                    <div class="pike-teeth">
+                        <span class="pike-tooth"></span>
+                        <span class="pike-tooth"></span>
+                        <span class="pike-tooth"></span>
+                        <span class="pike-tooth"></span>
+                        <span class="pike-tooth"></span>
+                        <span class="pike-tooth"></span>
+                        <span class="pike-tooth"></span>
+                    </div>
+                </div>
+            </div>
             
             <div class="game-over" id="gameOver">
                 <h2>Game Over!</h2>
@@ -545,6 +671,7 @@
         const SPEED_INCREASE_RATE = 0.95; // Multiply durations by 0.95 (5% faster)
         const FLY_SPAWN_INTERVAL = 8000; // Spawn a fly every 8 seconds on average
         const FLY_MOVE_INTERVAL = 2000; // Fly moves to neighboring leaf every 2 seconds
+        const PREDATOR_DURATION = 4500; // 4.5 seconds of danger sequence (50% slower)
         
         let gameActive = false;
         let score = 0;
@@ -560,6 +687,11 @@
         let speedMultiplier = 1.0;
         let flyPosition = null; // {row, col} or null if no fly
         let fliesEaten = 0;
+        let predatorTimeout = null;
+        let predatorFrog = null;
+        let musicStarted = false;
+        let pendingStartMusic = false;
+        let pendingPredatorSound = false;
         
         // Frog image paths
         const HAPPY_FROG_IMG = 'frog.png';
@@ -573,8 +705,14 @@
         function startBackgroundMusic() {
             if (!audioContext) return;
             try {
+                ensureAudioContext();
                 // Stop any existing music properly
                 stopBackgroundMusic();
+                if (audioContext.state !== 'running') {
+                    pendingStartMusic = true;
+                    return;
+                }
+                musicStarted = true;
                 
                 // Create a simple, pleasant background melody
                 musicGainNode = audioContext.createGain();
@@ -656,6 +794,9 @@
                 } catch(e) {}
                 musicGainNode = null;
             }
+            
+            musicStarted = false;
+            pendingStartMusic = false;
         }
         
         // Sound effects using Web Audio API
@@ -665,10 +806,18 @@
         } catch(e) {
             console.log('Web Audio API not supported');
         }
+
+        function ensureAudioContext() {
+            if (!audioContext) return;
+            if (audioContext.state === 'suspended') {
+                audioContext.resume().catch(() => {});
+            }
+        }
         
         function playJumpSound() {
             if (!audioContext) return;
             try {
+                ensureAudioContext();
                 const oscillator = audioContext.createOscillator();
                 const gainNode = audioContext.createGain();
                 
@@ -686,29 +835,10 @@
             } catch(e) {}
         }
         
-        function playSadSound() {
-            if (!audioContext) return;
-            try {
-                const oscillator = audioContext.createOscillator();
-                const gainNode = audioContext.createGain();
-                
-                oscillator.connect(gainNode);
-                gainNode.connect(audioContext.destination);
-                
-                oscillator.frequency.setValueAtTime(400, audioContext.currentTime);
-                oscillator.frequency.exponentialRampToValueAtTime(200, audioContext.currentTime + 0.5);
-                
-                gainNode.gain.setValueAtTime(0.15, audioContext.currentTime);
-                gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
-                
-                oscillator.start(audioContext.currentTime);
-                oscillator.stop(audioContext.currentTime + 0.5);
-            } catch(e) {}
-        }
-        
         function playFlyBuzzSound() {
             if (!audioContext) return;
             try {
+                ensureAudioContext();
                 // Create a buzzing sound effect for the fly
                 const oscillator = audioContext.createOscillator();
                 const gainNode = audioContext.createGain();
@@ -726,6 +856,87 @@
                 
                 oscillator.start(audioContext.currentTime);
                 oscillator.stop(audioContext.currentTime + 0.15);
+            } catch(e) {}
+        }
+
+        function playCrowdOhhSound() {
+            if (!audioContext) return;
+            try {
+                ensureAudioContext();
+                const now = audioContext.currentTime;
+                const master = audioContext.createGain();
+                master.gain.setValueAtTime(0.0, now);
+                master.gain.linearRampToValueAtTime(0.15, now + 0.15);
+                master.gain.linearRampToValueAtTime(0.06, now + 0.9);
+                master.gain.exponentialRampToValueAtTime(0.001, now + 1.4);
+                master.connect(audioContext.destination);
+                
+                const freqs = [220, 277, 330]; // A3, C#4, E4-ish "ohh" cluster
+                freqs.forEach((f, i) => {
+                    const osc = audioContext.createOscillator();
+                    const gain = audioContext.createGain();
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(f, now);
+                    osc.frequency.exponentialRampToValueAtTime(f * 0.85, now + 1.2);
+                    gain.gain.setValueAtTime(0.08 - i * 0.01, now);
+                    osc.connect(gain);
+                    gain.connect(master);
+                    osc.start(now);
+                    osc.stop(now + 1.5);
+                });
+            } catch(e) {}
+        }
+
+        function playPredatorRiseSound() {
+            if (!audioContext) return;
+            try {
+                ensureAudioContext();
+                const now = audioContext.currentTime;
+                const master = audioContext.createGain();
+                master.gain.setValueAtTime(0.0, now);
+                master.gain.linearRampToValueAtTime(0.5, now + 0.2);
+                master.gain.exponentialRampToValueAtTime(0.001, now + 1.8);
+                master.connect(audioContext.destination);
+                
+                // Low rumble
+                const rumble = audioContext.createOscillator();
+                const rumbleGain = audioContext.createGain();
+                rumble.type = 'sine';
+                rumble.frequency.setValueAtTime(60, now);
+                rumble.frequency.exponentialRampToValueAtTime(40, now + 1.4);
+                rumbleGain.gain.setValueAtTime(0.28, now);
+                rumble.connect(rumbleGain);
+                rumbleGain.connect(master);
+                rumble.start(now);
+                rumble.stop(now + 1.6);
+                
+                // Rising whoosh
+                const whoosh = audioContext.createOscillator();
+                const whooshGain = audioContext.createGain();
+                whoosh.type = 'triangle';
+                whoosh.frequency.setValueAtTime(180, now);
+                whoosh.frequency.exponentialRampToValueAtTime(520, now + 1.2);
+                whooshGain.gain.setValueAtTime(0.18, now + 0.05);
+                whooshGain.gain.exponentialRampToValueAtTime(0.001, now + 1.3);
+                whoosh.connect(whooshGain);
+                whooshGain.connect(master);
+                whoosh.start(now + 0.05);
+                whoosh.stop(now + 1.35);
+                
+                // Bubble pops
+                [0.15, 0.35, 0.6, 0.9, 1.15].forEach((t) => {
+                    const pop = audioContext.createOscillator();
+                    const popGain = audioContext.createGain();
+                    pop.type = 'sine';
+                    pop.frequency.setValueAtTime(280, now + t);
+                    pop.frequency.exponentialRampToValueAtTime(120, now + t + 0.08);
+                    popGain.gain.setValueAtTime(0.16, now + t);
+                    popGain.gain.exponentialRampToValueAtTime(0.001, now + t + 0.1);
+                    pop.connect(popGain);
+                    popGain.connect(master);
+                    pop.start(now + t);
+                    pop.stop(now + t + 0.12);
+                });
             } catch(e) {}
         }
         
@@ -1192,7 +1403,8 @@
             }
             
             if (frogPadGone) {
-                endGame();
+                showFrogOnEmpty(frogPosition.row, frogPosition.col);
+                startPredatorSequence();
             }
         }
 
@@ -1217,6 +1429,110 @@
             }
         }
 
+        function showFrogOnEmpty(row, col) {
+            const existingFrog = document.querySelector('.frog');
+            if (existingFrog) existingFrog.remove();
+            
+            const pond = document.getElementById('pond');
+            if (!pond) return;
+            
+            const frog = document.createElement('div');
+            frog.className = 'frog sinking';
+            
+            const frogImg = document.createElement('img');
+            frogImg.src = HAPPY_FROG_IMG;
+            frogImg.alt = 'Frog';
+            frog.appendChild(frogImg);
+            
+            // Compute cell position from grid geometry (CSS uses 5% padding and 2% gaps)
+            const rect = pond.getBoundingClientRect();
+            const padX = rect.width * 0.05;
+            const padY = rect.height * 0.05;
+            const gapX = rect.width * 0.02;
+            const gapY = rect.height * 0.02;
+            
+            const cellWidth = (rect.width - padX * 2 - gapX * (GRID_SIZE - 1)) / GRID_SIZE;
+            const cellHeight = (rect.height - padY * 2 - gapY * (GRID_SIZE - 1)) / GRID_SIZE;
+            
+            const safeRow = Number.isFinite(row) ? row : frogPosition.row;
+            const safeCol = Number.isFinite(col) ? col : frogPosition.col;
+            
+            const cellLeft = padX + safeCol * (cellWidth + gapX);
+            const cellTop = padY + safeRow * (cellHeight + gapY);
+            
+            const frogWidth = cellWidth * 0.8;
+            const frogHeight = cellHeight * 0.65;
+            const frogLeft = cellLeft + (cellWidth - frogWidth) / 2;
+            const frogTop = cellTop + (cellHeight - frogHeight) / 2;
+            
+            frog.style.width = frogWidth + 'px';
+            frog.style.height = frogHeight + 'px';
+            frog.style.left = frogLeft + 'px';
+            frog.style.top = frogTop + 'px';
+            frog.style.position = 'absolute';
+            
+            pond.appendChild(frog);
+            predatorFrog = frog;
+        }
+
+        function startPredatorSequence() {
+            if (!gameActive) return;
+            gameActive = false;
+            clearInterval(updateInterval);
+            clearInterval(timeInterval);
+            clearInterval(speedInterval);
+            clearInterval(flyInterval);
+            clearInterval(flyMoveInterval);
+            
+            // Stop background music
+            stopBackgroundMusic();
+
+            // Crowd "ohhh" sound
+            ensureAudioContext();
+            if (audioContext && audioContext.state === 'running') {
+                playCrowdOhhSound();
+            } else {
+                pendingPredatorSound = true;
+            }
+            // Try again shortly in case resume takes a moment (Edge quirk)
+            setTimeout(() => {
+                if (audioContext && audioContext.state === 'running') {
+                    playCrowdOhhSound();
+                    pendingPredatorSound = false;
+                }
+            }, 60);
+            
+            // Remove any fly
+            const existingFly = document.querySelector('.fly');
+            if (existingFly) existingFly.remove();
+            
+            const eyes = document.getElementById('pikeEyes');
+            if (eyes) {
+                if (predatorFrog) {
+                    const pond = document.getElementById('pond');
+                    const pondRect = pond.getBoundingClientRect();
+                    const frogRect = predatorFrog.getBoundingClientRect();
+                    const centerX = frogRect.left - pondRect.left + frogRect.width / 2;
+                    const centerY = frogRect.top - pondRect.top + frogRect.height / 2;
+                    eyes.style.left = centerX + 'px';
+                    eyes.style.top = (centerY - 70) + 'px';
+                }
+                // Restart animation if it was running
+                eyes.classList.remove('show');
+                void eyes.offsetWidth;
+                eyes.classList.add('show');
+            }
+            
+            predatorTimeout = setTimeout(() => {
+                if (predatorFrog) {
+                    predatorFrog.remove();
+                    predatorFrog = null;
+                }
+                if (eyes) eyes.classList.remove('show');
+                endGame();
+            }, PREDATOR_DURATION);
+        }
+
         function moveFrog(deltaRow, deltaCol) {
             if (!gameActive) return;
             
@@ -1230,7 +1546,10 @@
             const targetPad = lilyPads.find(p => p.row === newRow && p.col === newCol);
             
             if (!targetPad || targetPad.isGone || targetPad.scale === 0 || targetPad.respawnTime !== null) {
-                endGame();
+                frogPosition.row = newRow;
+                frogPosition.col = newCol;
+                showFrogOnEmpty(newRow, newCol);
+                startPredatorSequence();
                 return;
             }
             
@@ -1255,6 +1574,19 @@
         }
 
         function endGame() {
+            if (predatorTimeout) {
+                clearTimeout(predatorTimeout);
+                predatorTimeout = null;
+            }
+            
+            if (predatorFrog) {
+                predatorFrog.remove();
+                predatorFrog = null;
+            }
+            
+            const eyes = document.getElementById('pikeEyes');
+            if (eyes) eyes.classList.remove('show');
+            
             gameActive = false;
             clearInterval(updateInterval);
             clearInterval(timeInterval);
@@ -1268,8 +1600,6 @@
             // Remove any fly
             const existingFly = document.querySelector('.fly');
             if (existingFly) existingFly.remove();
-            
-            playSadSound(); // Play sad sound on game over
             
             document.getElementById('finalScore').textContent = score;
             document.getElementById('finalFlies').textContent = fliesEaten;
@@ -1298,7 +1628,26 @@
             initGame();
         }
 
+        function unlockAudioAndMaybeStartMusic() {
+            ensureAudioContext();
+            if (audioContext && audioContext.state === 'running') {
+                if (gameActive && (!musicStarted || pendingStartMusic)) {
+                    startBackgroundMusic();
+                    pendingStartMusic = false;
+                }
+                if (pendingPredatorSound) {
+                    playPredatorRiseSound();
+                    pendingPredatorSound = false;
+                }
+            }
+        }
+        
+        document.addEventListener('pointerdown', () => {
+            unlockAudioAndMaybeStartMusic();
+        }, { passive: true });
+        
         document.addEventListener('keydown', (e) => {
+            unlockAudioAndMaybeStartMusic();
             if (!gameActive) return;
             
             switch(e.key) {
