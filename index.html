@@ -52,6 +52,7 @@
             grid-template-rows: repeat(5, 1fr);
             gap: 2%;
             padding: 5%;
+            touch-action: none;
         }
 
         .lily-pad {
@@ -2009,6 +2010,59 @@
                 }
             }
         }
+
+        function handleDirectionalInput(direction) {
+            if (!gameActive) return;
+            switch(direction) {
+                case 'up':
+                    moveFrog(-1, 0);
+                    break;
+                case 'down':
+                    moveFrog(1, 0);
+                    break;
+                case 'left':
+                    moveFrog(0, -1);
+                    break;
+                case 'right':
+                    moveFrog(0, 1);
+                    break;
+            }
+        }
+
+        function bindSwipeControls() {
+            const pond = document.getElementById('pond');
+            if (!pond) return;
+
+            let startX = 0;
+            let startY = 0;
+            const minSwipeDistance = 26;
+
+            pond.addEventListener('touchstart', (e) => {
+                if (!e.changedTouches || e.changedTouches.length === 0) return;
+                const t = e.changedTouches[0];
+                startX = t.clientX;
+                startY = t.clientY;
+            }, { passive: true });
+
+            pond.addEventListener('touchend', (e) => {
+                if (!e.changedTouches || e.changedTouches.length === 0) return;
+                const t = e.changedTouches[0];
+                const dx = t.clientX - startX;
+                const dy = t.clientY - startY;
+                const absX = Math.abs(dx);
+                const absY = Math.abs(dy);
+
+                if (absX < minSwipeDistance && absY < minSwipeDistance) return;
+
+                unlockAudioAndMaybeStartMusic();
+
+                if (absX > absY) {
+                    handleDirectionalInput(dx > 0 ? 'right' : 'left');
+                } else {
+                    handleDirectionalInput(dy > 0 ? 'down' : 'up');
+                }
+            }, { passive: true });
+        }
         
         document.addEventListener('pointerdown', () => {
             unlockAudioAndMaybeStartMusic();
@@ -2021,19 +2075,19 @@
             switch(e.key) {
                 case 'ArrowUp':
                     e.preventDefault();
-                    moveFrog(-1, 0);
+                    handleDirectionalInput('up');
                     break;
                 case 'ArrowDown':
                     e.preventDefault();
-                    moveFrog(1, 0);
+                    handleDirectionalInput('down');
                     break;
                 case 'ArrowLeft':
                     e.preventDefault();
-                    moveFrog(0, -1);
+                    handleDirectionalInput('left');
                     break;
                 case 'ArrowRight':
                     e.preventDefault();
-                    moveFrog(0, 1);
+                    handleDirectionalInput('right');
                     break;
             }
         });
@@ -2044,6 +2098,15 @@
                 submitScore();
             }
         });
+
+        const prefersTouchControls =
+            (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) ||
+            ('ontouchstart' in window) ||
+            (navigator.maxTouchPoints && navigator.maxTouchPoints > 0);
+
+        if (prefersTouchControls) {
+            bindSwipeControls();
+        }
 
         initGame();
     </script>
