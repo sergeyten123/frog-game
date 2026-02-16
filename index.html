@@ -100,6 +100,53 @@
             filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.4));
         }
 
+        .frog.invincible {
+            animation: invincibleGlow 0.6s linear infinite;
+            filter:
+                drop-shadow(0 0 10px rgba(255, 0, 80, 1))
+                drop-shadow(0 0 16px rgba(255, 165, 0, 1))
+                drop-shadow(0 0 24px rgba(50, 240, 120, 0.95))
+                drop-shadow(0 0 32px rgba(0, 200, 255, 0.95))
+                drop-shadow(0 0 42px rgba(170, 100, 255, 0.85));
+        }
+
+        .frog.invincible img {
+            filter:
+                saturate(1.35)
+                brightness(1.2)
+                drop-shadow(0 0 12px rgba(255, 255, 255, 0.9));
+        }
+
+        @keyframes invincibleGlow {
+            0% {
+                transform: scale(1);
+                filter:
+                    hue-rotate(0deg)
+                    drop-shadow(0 0 8px rgba(255, 80, 80, 0.95))
+                    drop-shadow(0 0 16px rgba(255, 190, 70, 0.9))
+                    drop-shadow(0 0 24px rgba(90, 230, 130, 0.85))
+                    drop-shadow(0 0 34px rgba(90, 150, 255, 0.8));
+            }
+            50% {
+                transform: scale(1.1);
+                filter:
+                    hue-rotate(120deg)
+                    drop-shadow(0 0 10px rgba(255, 80, 220, 1))
+                    drop-shadow(0 0 20px rgba(120, 220, 255, 1))
+                    drop-shadow(0 0 30px rgba(170, 120, 255, 0.95))
+                    drop-shadow(0 0 44px rgba(255, 255, 255, 0.85));
+            }
+            100% {
+                transform: scale(1);
+                filter:
+                    hue-rotate(240deg)
+                    drop-shadow(0 0 8px rgba(255, 80, 80, 0.95))
+                    drop-shadow(0 0 16px rgba(255, 190, 70, 0.9))
+                    drop-shadow(0 0 24px rgba(90, 230, 130, 0.85))
+                    drop-shadow(0 0 34px rgba(90, 150, 255, 0.8));
+            }
+        }
+
         /* Big cute eyes */
         .frog::before {
             content: '';
@@ -406,6 +453,48 @@
             transform: rotate(20deg);
         }
 
+        /* Sword power-up */
+        .sword {
+            position: absolute;
+            width: 34%;
+            height: 56%;
+            z-index: 16;
+            left: 33%;
+            top: 18%;
+            transform: rotate(18deg);
+            animation: swordShimmer 0.75s steps(2, end) infinite;
+            pointer-events: none;
+            background-image: url('sword.png');
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: center;
+            box-shadow:
+                0 0 8px rgba(255, 255, 255, 0.95),
+                0 0 18px rgba(80, 220, 255, 0.95),
+                0 0 28px rgba(120, 120, 255, 0.85),
+                0 0 38px rgba(245, 120, 255, 0.7);
+            image-rendering: pixelated;
+        }
+
+        @keyframes swordShimmer {
+            from {
+                transform: rotate(14deg) translateY(0) scale(1);
+                filter:
+                    hue-rotate(0deg)
+                    saturate(1.2)
+                    brightness(1.1)
+                    drop-shadow(0 0 6px rgba(255, 255, 255, 0.85));
+            }
+            to {
+                transform: rotate(24deg) translateY(-3px) scale(1.12);
+                filter:
+                    hue-rotate(36deg)
+                    saturate(1.45)
+                    brightness(1.25)
+                    drop-shadow(0 0 14px rgba(255, 255, 255, 1));
+            }
+        }
+
         /* Frog speech bubble */
         .speech-bubble {
             position: fixed;
@@ -668,6 +757,8 @@
         const SPEED_INCREASE_RATE = 0.95; // Multiply durations by 0.95 (5% faster)
         const FLY_SPAWN_INTERVAL = 8000; // Spawn a fly every 8 seconds on average
         const FLY_MOVE_INTERVAL = 2000; // Fly moves to neighboring leaf every 2 seconds
+        const SWORD_SPAWN_INTERVAL = 30000; // Spawn sword every 30 seconds
+        const INVINCIBILITY_DURATION = 5000; // 5 seconds
         const PREDATOR_DURATION = 4500; // 4.5 seconds of danger sequence (50% slower)
         
         let gameActive = false;
@@ -680,9 +771,12 @@
         let speedInterval;
         let flyInterval;
         let flyMoveInterval;
+        let swordInterval;
         let currentScoreId = null;
         let speedMultiplier = 1.0;
         let flyPosition = null; // {row, col} or null if no fly
+        let swordPosition = null; // {row, col} or null if no sword
+        let invincibleUntil = 0;
         let fliesEaten = 0;
         let predatorTimeout = null;
         let predatorFrog = null;
@@ -694,34 +788,109 @@
         const HAPPY_FROG_IMG = 'frog.png';
         const SAD_FROG_IMG = 'frog.png';
         
-        // Background music using HTML Audio
-        const BACKGROUND_MUSIC_FILE = 'Long Away Home.wav';
+        // Background music playlist (random order, no repeats per game)
+        const BACKGROUND_MUSIC_FILES = ['Long Away Home.wav', 'leap.WAV', 'boss_battle.WAV'];
         let backgroundMusicAudio = null;
+        let backgroundMusicOrder = [];
+        let backgroundMusicTrackIndex = -1;
+        let currentBackgroundTrack = null;
+
+        function shuffleArray(arr) {
+            for (let i = arr.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [arr[i], arr[j]] = [arr[j], arr[i]];
+            }
+            return arr;
+        }
+
+        function resetBackgroundMusicPlaylist() {
+            backgroundMusicOrder = shuffleArray([...BACKGROUND_MUSIC_FILES]);
+            backgroundMusicTrackIndex = -1;
+            currentBackgroundTrack = null;
+        }
+
+        function getNextBackgroundTrack() {
+            backgroundMusicTrackIndex += 1;
+            if (backgroundMusicTrackIndex >= backgroundMusicOrder.length) {
+                return null;
+            }
+            return backgroundMusicOrder[backgroundMusicTrackIndex];
+        }
+
+        function playNextBackgroundTrack() {
+            if (!gameActive) return;
+
+            const nextTrack = getNextBackgroundTrack();
+            if (!nextTrack) {
+                // Playlist exhausted for this game (no repeats by design).
+                musicStarted = false;
+                pendingStartMusic = false;
+                return;
+            }
+
+            currentBackgroundTrack = nextTrack;
+            backgroundMusicAudio.src = nextTrack;
+            backgroundMusicAudio.currentTime = 0;
+
+            const playPromise = backgroundMusicAudio.play();
+            if (playPromise && typeof playPromise.then === 'function') {
+                playPromise.then(() => {
+                    musicStarted = true;
+                    pendingStartMusic = false;
+                }).catch(() => {
+                    musicStarted = false;
+                    pendingStartMusic = true;
+                });
+            } else {
+                musicStarted = true;
+                pendingStartMusic = false;
+            }
+        }
+
+        function handleBackgroundTrackEnded() {
+            if (!gameActive) return;
+            playNextBackgroundTrack();
+        }
+
+        function handleBackgroundTrackError() {
+            if (!gameActive) return;
+            playNextBackgroundTrack();
+        }
         
         function startBackgroundMusic() {
             try {
-                stopBackgroundMusic();
-
-                if (!backgroundMusicAudio) {
-                    backgroundMusicAudio = new Audio(BACKGROUND_MUSIC_FILE);
-                    backgroundMusicAudio.loop = true;
-                    backgroundMusicAudio.preload = 'auto';
-                    backgroundMusicAudio.volume = 0.35;
+                if (!backgroundMusicOrder.length) {
+                    resetBackgroundMusicPlaylist();
                 }
 
-                backgroundMusicAudio.currentTime = 0;
-                const playPromise = backgroundMusicAudio.play();
-                if (playPromise && typeof playPromise.then === 'function') {
-                    playPromise.then(() => {
+                if (!backgroundMusicAudio) {
+                    backgroundMusicAudio = new Audio();
+                    backgroundMusicAudio.preload = 'auto';
+                    backgroundMusicAudio.volume = 0.35;
+                    backgroundMusicAudio.addEventListener('ended', handleBackgroundTrackEnded);
+                    backgroundMusicAudio.addEventListener('error', handleBackgroundTrackError);
+                }
+
+                if (musicStarted && !backgroundMusicAudio.paused) {
+                    return;
+                }
+
+                if (currentBackgroundTrack) {
+                    const playPromise = backgroundMusicAudio.play();
+                    if (playPromise && typeof playPromise.then === 'function') {
+                        playPromise.then(() => {
+                            musicStarted = true;
+                            pendingStartMusic = false;
+                        }).catch(() => {
+                            musicStarted = false;
+                            pendingStartMusic = true;
+                        });
+                    } else {
                         musicStarted = true;
                         pendingStartMusic = false;
-                    }).catch(() => {
-                        musicStarted = false;
-                        pendingStartMusic = true;
-                    });
+                    }
                 } else {
-                    musicStarted = true;
-                    pendingStartMusic = false;
+                    playNextBackgroundTrack();
                 }
             } catch(e) {}
         }
@@ -736,6 +905,7 @@
             
             musicStarted = false;
             pendingStartMusic = false;
+            currentBackgroundTrack = null;
         }
         
         // Sound effects using Web Audio API
@@ -882,6 +1052,50 @@
         function increaseSpeed() {
             if (!gameActive) return;
             speedMultiplier /= SPEED_INCREASE_RATE; // Divide by 0.95 to make things 5% faster
+        }
+
+        function isInvincible() {
+            return Date.now() < invincibleUntil;
+        }
+
+        function applyFrogInvincibleVisual() {
+            const frog = document.querySelector('.frog');
+            if (!frog) return;
+            frog.classList.toggle('invincible', isInvincible());
+        }
+
+        function clearSword() {
+            const existingSword = document.querySelector('.sword');
+            if (existingSword) existingSword.remove();
+            swordPosition = null;
+        }
+
+        function spawnSword() {
+            if (!gameActive) return;
+
+            clearSword();
+
+            const availablePads = lilyPads.filter(p =>
+                !p.isGone &&
+                p.scale > 0.3 &&
+                !(p.row === frogPosition.row && p.col === frogPosition.col) &&
+                !(flyPosition && p.row === flyPosition.row && p.col === flyPosition.col)
+            );
+
+            if (availablePads.length === 0) return;
+
+            const randomPad = availablePads[Math.floor(Math.random() * availablePads.length)];
+            swordPosition = { row: randomPad.row, col: randomPad.col };
+
+            const sword = document.createElement('div');
+            sword.className = 'sword';
+            randomPad.element.appendChild(sword);
+        }
+
+        function collectSword() {
+            clearSword();
+            invincibleUntil = Date.now() + INVINCIBILITY_DURATION;
+            applyFrogInvincibleVisual();
         }
 
         function spawnFly() {
@@ -1151,6 +1365,9 @@
             frogPosition = { row: 2, col: 2 };
             score = 0;
             currentScoreId = null;
+            invincibleUntil = 0;
+            swordPosition = null;
+            resetBackgroundMusicPlaylist();
             
             const now = Date.now();
             
@@ -1260,6 +1477,9 @@
                 flyInterval = setInterval(spawnFly, FLY_SPAWN_INTERVAL);
                 flyMoveInterval = setInterval(moveFlyToNeighbor, FLY_MOVE_INTERVAL);
             }, FLY_SPAWN_INTERVAL);
+
+            // Spawn sword power-up every 30 seconds
+            swordInterval = setInterval(spawnSword, SWORD_SPAWN_INTERVAL);
         }
 
         function updateGame() {
@@ -1320,6 +1540,22 @@
                     }
                 }
             }
+
+            if (swordPosition) {
+                const swordPad = lilyPads.find(p => p.row === swordPosition.row && p.col === swordPosition.col);
+                if (!swordPad || swordPad.isGone || swordPad.respawnTime !== null || swordPad.scale <= 0) {
+                    clearSword();
+                }
+            }
+
+            // If invincibility expired while standing on no/invalid pad, trigger failure now.
+            const currentPadState = lilyPads.find(p =>
+                p.row === frogPosition.row && p.col === frogPosition.col
+            );
+            const invalidCurrentPad = !currentPadState || currentPadState.isGone || currentPadState.scale === 0 || currentPadState.respawnTime !== null;
+            if (invalidCurrentPad && !isInvincible()) {
+                frogPadGone = true;
+            }
             
             // Update frog's image based on current leaf size
             const currentPad = lilyPads.find(p => 
@@ -1342,9 +1578,15 @@
             }
             
             if (frogPadGone) {
-                showFrogOnEmpty(frogPosition.row, frogPosition.col);
-                startPredatorSequence();
+                if (isInvincible()) {
+                    updateFrogPosition();
+                } else {
+                    showFrogOnEmpty(frogPosition.row, frogPosition.col);
+                    startPredatorSequence();
+                }
             }
+
+            applyFrogInvincibleVisual();
         }
 
         function updateFrogPosition() {
@@ -1354,8 +1596,10 @@
             const currentPad = lilyPads.find(p => 
                 p.row === frogPosition.row && p.col === frogPosition.col
             );
-            
-            if (currentPad) {
+
+            const canStandOnPad = currentPad && !currentPad.isGone && currentPad.scale > 0 && currentPad.respawnTime === null;
+
+            if (canStandOnPad) {
                 const frog = document.createElement('div');
                 frog.className = 'frog';
 
@@ -1365,10 +1609,14 @@
                 frog.appendChild(frogImg);
                 
                 currentPad.element.appendChild(frog);
+            } else {
+                showFrogOnEmpty(frogPosition.row, frogPosition.col, false);
             }
+
+            applyFrogInvincibleVisual();
         }
 
-        function showFrogOnEmpty(row, col) {
+        function showFrogOnEmpty(row, col, sinking = true) {
             const existingFrog = document.querySelector('.frog');
             if (existingFrog) existingFrog.remove();
             
@@ -1376,7 +1624,7 @@
             if (!pond) return;
             
             const frog = document.createElement('div');
-            frog.className = 'frog sinking';
+            frog.className = sinking ? 'frog sinking' : 'frog';
             
             const frogImg = document.createElement('img');
             frogImg.src = HAPPY_FROG_IMG;
@@ -1411,7 +1659,11 @@
             frog.style.position = 'absolute';
             
             pond.appendChild(frog);
-            predatorFrog = frog;
+            if (sinking) {
+                predatorFrog = frog;
+            }
+
+            applyFrogInvincibleVisual();
         }
 
         function startPredatorSequence() {
@@ -1422,6 +1674,9 @@
             clearInterval(speedInterval);
             clearInterval(flyInterval);
             clearInterval(flyMoveInterval);
+            clearInterval(swordInterval);
+            clearSword();
+            invincibleUntil = 0;
             
             // Stop background music
             stopBackgroundMusic();
@@ -1483,12 +1738,23 @@
             }
             
             const targetPad = lilyPads.find(p => p.row === newRow && p.col === newCol);
-            
-            if (!targetPad || targetPad.isGone || targetPad.scale === 0 || targetPad.respawnTime !== null) {
+
+            const targetInvalid = !targetPad || targetPad.isGone || targetPad.scale === 0 || targetPad.respawnTime !== null;
+
+            if (targetInvalid) {
                 frogPosition.row = newRow;
                 frogPosition.col = newCol;
-                showFrogOnEmpty(newRow, newCol);
-                startPredatorSequence();
+
+                if (isInvincible()) {
+                    updateFrogPosition();
+                    playJumpSound();
+                    if (swordPosition && swordPosition.row === newRow && swordPosition.col === newCol) {
+                        collectSword();
+                    }
+                } else {
+                    showFrogOnEmpty(newRow, newCol);
+                    startPredatorSequence();
+                }
                 return;
             }
             
@@ -1501,6 +1767,10 @@
                 // Check if we landed on a fly
                 if (flyPosition && flyPosition.row === newRow && flyPosition.col === newCol) {
                     eatFly();
+                }
+
+                if (swordPosition && swordPosition.row === newRow && swordPosition.col === newCol) {
+                    collectSword();
                 }
             }
         }
@@ -1532,6 +1802,9 @@
             clearInterval(speedInterval);
             clearInterval(flyInterval);
             clearInterval(flyMoveInterval);
+            clearInterval(swordInterval);
+            clearSword();
+            invincibleUntil = 0;
             
             // Stop background music
             stopBackgroundMusic();
@@ -1562,6 +1835,7 @@
             clearInterval(speedInterval);
             clearInterval(flyInterval);
             clearInterval(flyMoveInterval);
+            clearInterval(swordInterval);
             document.getElementById('nameInputSection').classList.remove('show');
             document.getElementById('playerName').value = '';
             initGame();
