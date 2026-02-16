@@ -19,24 +19,25 @@
             background: linear-gradient(to bottom, #87CEEB 0%, #4A90A4 100%);
             display: flex;
             justify-content: center;
-            align-items: center;
+            align-items: flex-start;
             min-height: 100vh;
-            padding: 20px;
-            gap: 30px;
+            padding: 12px;
+            gap: 16px;
         }
 
         .game-wrapper {
             display: flex;
-            gap: 30px;
+            gap: 16px;
             align-items: center;
+            width: min(1200px, 100%);
         }
 
         .game-container {
             position: relative;
-            width: 90vmin;
-            height: 90vmin;
-            max-width: 600px;
-            max-height: 600px;
+            width: 84vmin;
+            height: 84vmin;
+            max-width: 680px;
+            max-height: 680px;
             background: radial-gradient(circle, #2E8B57 0%, #1a5c3a 100%);
             border-radius: 20px;
             box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
@@ -313,14 +314,15 @@
 
         .ui {
             background: rgba(255, 255, 255, 0.95);
-            padding: 30px;
+            padding: 16px;
             border-radius: 15px;
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
             text-align: center;
             display: flex;
             flex-direction: column;
-            gap: 20px;
+            gap: 10px;
             min-width: 200px;
+            max-width: 280px;
         }
 
         .score, .time, .flies {
@@ -346,7 +348,9 @@
             z-index: 200;
             text-align: center;
             display: none;
-            min-width: 400px;
+            width: min(92vw, 420px);
+            max-height: 88vh;
+            overflow-y: auto;
         }
 
         .game-over.show {
@@ -450,10 +454,32 @@
 
         .instructions {
             background: rgba(255, 255, 255, 0.9);
-            padding: 10px 20px;
+            padding: 8px 12px;
             border-radius: 10px;
-            font-size: 14px;
+            font-size: 13px;
             color: #666;
+        }
+
+        .swipe-zone {
+            display: none;
+        }
+
+        body.touch-input .swipe-zone {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: min(92vw, 640px);
+            min-height: 78px;
+            margin: 6px auto 0;
+            border-radius: 14px;
+            border: 2px dashed rgba(255, 255, 255, 0.85);
+            background: rgba(0, 0, 0, 0.18);
+            color: #fff;
+            font-weight: bold;
+            letter-spacing: 0.3px;
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+            touch-action: none;
+            user-select: none;
         }
 
         /* Fly styling */
@@ -736,6 +762,63 @@
             }
         }
 
+        @media (max-width: 900px) {
+            body {
+                padding: 8px;
+            }
+
+            .game-wrapper {
+                flex-direction: column;
+                align-items: center;
+                gap: 8px;
+                width: 100%;
+            }
+
+            .game-container {
+                width: min(92vw, 92vh);
+                height: min(92vw, 92vh);
+                max-width: none;
+                max-height: none;
+            }
+
+            .ui {
+                max-width: min(95vw, 560px);
+                width: 100%;
+                padding: 10px;
+                gap: 8px;
+            }
+
+            .score, .time, .flies {
+                font-size: 18px;
+            }
+
+            .instructions {
+                font-size: 12px;
+                padding: 8px 10px;
+            }
+
+            .game-over {
+                width: 92vw;
+                padding: 22px 14px;
+                max-height: 86vh;
+            }
+
+            .game-over h2 {
+                font-size: 30px;
+            }
+
+            .name-input-section input {
+                width: 100%;
+                margin-right: 0;
+                margin-bottom: 10px;
+            }
+
+            .name-input-section button,
+            .restart-btn {
+                width: 100%;
+            }
+        }
+
     </style>
 </head>
 <body>
@@ -791,6 +874,7 @@
                 <button class="restart-btn" onclick="restartGame()">Play Again</button>
             </div>
         </div>
+        <div class="swipe-zone" id="swipeZone">Swipe Here To Move</div>
     </div>
 
     <script>
@@ -2031,37 +2115,46 @@
 
         function bindSwipeControls() {
             const pond = document.getElementById('pond');
-            if (!pond) return;
+            const swipeZone = document.getElementById('swipeZone');
+            if (!pond && !swipeZone) return;
 
-            let startX = 0;
-            let startY = 0;
             const minSwipeDistance = 26;
 
-            pond.addEventListener('touchstart', (e) => {
-                if (!e.changedTouches || e.changedTouches.length === 0) return;
-                const t = e.changedTouches[0];
-                startX = t.clientX;
-                startY = t.clientY;
-            }, { passive: true });
+            const attachSwipeTarget = (target) => {
+                if (!target) return;
 
-            pond.addEventListener('touchend', (e) => {
-                if (!e.changedTouches || e.changedTouches.length === 0) return;
-                const t = e.changedTouches[0];
-                const dx = t.clientX - startX;
-                const dy = t.clientY - startY;
-                const absX = Math.abs(dx);
-                const absY = Math.abs(dy);
+                let startX = 0;
+                let startY = 0;
 
-                if (absX < minSwipeDistance && absY < minSwipeDistance) return;
+                target.addEventListener('touchstart', (e) => {
+                    if (!e.changedTouches || e.changedTouches.length === 0) return;
+                    const t = e.changedTouches[0];
+                    startX = t.clientX;
+                    startY = t.clientY;
+                }, { passive: true });
 
-                unlockAudioAndMaybeStartMusic();
+                target.addEventListener('touchend', (e) => {
+                    if (!e.changedTouches || e.changedTouches.length === 0) return;
+                    const t = e.changedTouches[0];
+                    const dx = t.clientX - startX;
+                    const dy = t.clientY - startY;
+                    const absX = Math.abs(dx);
+                    const absY = Math.abs(dy);
 
-                if (absX > absY) {
-                    handleDirectionalInput(dx > 0 ? 'right' : 'left');
-                } else {
-                    handleDirectionalInput(dy > 0 ? 'down' : 'up');
-                }
-            }, { passive: true });
+                    if (absX < minSwipeDistance && absY < minSwipeDistance) return;
+
+                    unlockAudioAndMaybeStartMusic();
+
+                    if (absX > absY) {
+                        handleDirectionalInput(dx > 0 ? 'right' : 'left');
+                    } else {
+                        handleDirectionalInput(dy > 0 ? 'down' : 'up');
+                    }
+                }, { passive: true });
+            };
+
+            attachSwipeTarget(pond);
+            attachSwipeTarget(swipeZone);
         }
         
         document.addEventListener('pointerdown', () => {
@@ -2105,6 +2198,7 @@
             (navigator.maxTouchPoints && navigator.maxTouchPoints > 0);
 
         if (prefersTouchControls) {
+            document.body.classList.add('touch-input');
             bindSwipeControls();
         }
 
