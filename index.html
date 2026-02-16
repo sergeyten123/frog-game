@@ -89,6 +89,51 @@
             pointer-events: none;
         }
 
+        .wrap-arrow {
+            position: absolute;
+            width: 0;
+            height: 0;
+            z-index: 6;
+            opacity: 0.95;
+            filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.85));
+        }
+
+        .wrap-arrow.up {
+            top: 6%;
+            left: 50%;
+            transform: translateX(-50%);
+            border-left: 7px solid transparent;
+            border-right: 7px solid transparent;
+            border-bottom: 11px solid rgba(255, 255, 255, 0.95);
+        }
+
+        .wrap-arrow.down {
+            bottom: 6%;
+            left: 50%;
+            transform: translateX(-50%);
+            border-left: 7px solid transparent;
+            border-right: 7px solid transparent;
+            border-top: 11px solid rgba(255, 255, 255, 0.95);
+        }
+
+        .wrap-arrow.left {
+            left: 6%;
+            top: 50%;
+            transform: translateY(-50%);
+            border-top: 7px solid transparent;
+            border-bottom: 7px solid transparent;
+            border-right: 11px solid rgba(255, 255, 255, 0.95);
+        }
+
+        .wrap-arrow.right {
+            right: 6%;
+            top: 50%;
+            transform: translateY(-50%);
+            border-top: 7px solid transparent;
+            border-bottom: 7px solid transparent;
+            border-left: 11px solid rgba(255, 255, 255, 0.95);
+        }
+
         .frog {
             position: absolute;
             width: 80%;
@@ -701,7 +746,7 @@
                 <strong>Controls:</strong><br>
                 Arrow Keys to move 🐸<br>
                 Avoid red leaves!<br>
-                Catch flies for bonus!
+                Catch flies (+5) and swords (+20)!
             </div>
         </div>
         
@@ -728,6 +773,7 @@
                 <h2>Game Over!</h2>
                 <p class="score">You survived: <span id="finalScore">0</span> seconds</p>
                 <p class="score">Flies caught: <span id="finalFlies">0</span> <svg width="32" height="32" viewBox="0 0 32 32" style="vertical-align: middle; margin-left: 8px;"><circle cx="16" cy="16" r="6" fill="#2C2C2C"/><ellipse cx="8" cy="12" rx="6" ry="5" fill="rgba(200,230,255,0.7)"/><ellipse cx="24" cy="12" rx="6" ry="5" fill="rgba(200,230,255,0.7)"/></svg></p>
+                <p style="color:#666; margin-top:8px;">Tip: Flies give +5, swords give +20 and 5s invincibility.</p>
                 
                 <div class="name-input-section" id="nameInputSection">
                     <p style="color: #228B22; font-weight: bold;">🎉 Top 5! Enter your name:</p>
@@ -789,7 +835,7 @@
         const SAD_FROG_IMG = 'frog.png';
         
         // Background music playlist (random order, no repeats per game)
-        const BACKGROUND_MUSIC_FILES = ['Long Away Home.wav', 'leap.WAV', 'boss_battle.WAV'];
+        const BACKGROUND_MUSIC_FILES = ['Long Away Home.wav', 'leap.WAV', 'boss_battle.WAV', 'marioish.mp3'];
         let backgroundMusicAudio = null;
         let backgroundMusicOrder = [];
         let backgroundMusicTrackIndex = -1;
@@ -968,6 +1014,48 @@
             } catch(e) {}
         }
 
+        function playSwordSpawnSound() {
+            if (!audioContext) return;
+            try {
+                ensureAudioContext();
+                if (audioContext.state !== 'running') return;
+
+                const now = audioContext.currentTime;
+                const master = audioContext.createGain();
+                master.gain.setValueAtTime(0.0, now);
+                // Deliberately loud transient so it cuts through music.
+                master.gain.linearRampToValueAtTime(0.55, now + 0.02);
+                master.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
+                master.connect(audioContext.destination);
+
+                // Main sword swoosh (high-to-low sweep)
+                const swoosh = audioContext.createOscillator();
+                const swooshGain = audioContext.createGain();
+                swoosh.type = 'sawtooth';
+                swoosh.frequency.setValueAtTime(1400, now);
+                swoosh.frequency.exponentialRampToValueAtTime(220, now + 0.32);
+                swooshGain.gain.setValueAtTime(0.42, now);
+                swooshGain.gain.exponentialRampToValueAtTime(0.001, now + 0.34);
+                swoosh.connect(swooshGain);
+                swooshGain.connect(master);
+                swoosh.start(now);
+                swoosh.stop(now + 0.34);
+
+                // Bright metallic edge
+                const ring = audioContext.createOscillator();
+                const ringGain = audioContext.createGain();
+                ring.type = 'triangle';
+                ring.frequency.setValueAtTime(2100, now + 0.01);
+                ring.frequency.exponentialRampToValueAtTime(700, now + 0.18);
+                ringGain.gain.setValueAtTime(0.26, now + 0.01);
+                ringGain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+                ring.connect(ringGain);
+                ringGain.connect(master);
+                ring.start(now + 0.01);
+                ring.stop(now + 0.21);
+            } catch(e) {}
+        }
+
         function playCrowdOhhSound() {
             if (!audioContext) return;
             try {
@@ -1054,6 +1142,37 @@
             speedMultiplier /= SPEED_INCREASE_RATE; // Divide by 0.95 to make things 5% faster
         }
 
+        function getWrapDirectionsForPad(row, col) {
+            const possible = [];
+            if (row === 0) possible.push('up');
+            if (row === GRID_SIZE - 1) possible.push('down');
+            if (col === 0) possible.push('left');
+            if (col === GRID_SIZE - 1) possible.push('right');
+            if (possible.length === 0) return [];
+
+            const dirs = [];
+            const chancePerDirection = 0.35;
+            possible.forEach((dir) => {
+                if (Math.random() < chancePerDirection) dirs.push(dir);
+            });
+
+            // Corners can have 1 or 2 arrows. Ensure at least one occasionally.
+            if (possible.length === 2 && dirs.length === 0 && Math.random() < 0.5) {
+                dirs.push(possible[Math.floor(Math.random() * possible.length)]);
+            }
+
+            return dirs;
+        }
+
+        function addWrapArrowsToPad(padElement, directions) {
+            if (!directions || directions.length === 0) return;
+            directions.forEach((dir) => {
+                const arrow = document.createElement('div');
+                arrow.className = `wrap-arrow ${dir}`;
+                padElement.appendChild(arrow);
+            });
+        }
+
         function isInvincible() {
             return Date.now() < invincibleUntil;
         }
@@ -1090,12 +1209,29 @@
             const sword = document.createElement('div');
             sword.className = 'sword';
             randomPad.element.appendChild(sword);
+
+            playSwordSpawnSound();
         }
 
         function collectSword() {
             clearSword();
+            // Same score model as flies: shift timer and update current score display.
+            startTime -= 20000; // +20 seconds/points
+            score += 20;
+            document.getElementById('score').textContent = score;
+
             invincibleUntil = Date.now() + INVINCIBILITY_DURATION;
             applyFrogInvincibleVisual();
+
+            const messages = [
+                "Sword up! +20",
+                "Hero mode! +20",
+                "Blade boost! +20",
+                "Invincible! +20",
+                "Power sword! +20"
+            ];
+            const randomMessage = messages[Math.floor(Math.random() * messages.length)];
+            showSpeechBubble(randomMessage);
         }
 
         function spawnFly() {
@@ -1378,6 +1514,9 @@
                     pad.dataset.row = row;
                     pad.dataset.col = col;
                     pond.appendChild(pad);
+
+                    const wrapDirections = getWrapDirectionsForPad(row, col);
+                    addWrapArrowsToPad(pad, wrapDirections);
                     
                     // Much more varied initial states
                     const startChoice = Math.random();
@@ -1427,6 +1566,7 @@
                         row, 
                         col, 
                         element: pad,
+                        wrapDirections,
                         ...initialState
                     });
                     
@@ -1730,11 +1870,26 @@
         function moveFrog(deltaRow, deltaCol) {
             if (!gameActive) return;
             
-            const newRow = frogPosition.row + deltaRow;
-            const newCol = frogPosition.col + deltaCol;
-            
-            if (newRow < 0 || newRow >= GRID_SIZE || newCol < 0 || newCol >= GRID_SIZE) {
-                return;
+            let newRow = frogPosition.row + deltaRow;
+            let newCol = frogPosition.col + deltaCol;
+
+            const movedOutOfBounds = newRow < 0 || newRow >= GRID_SIZE || newCol < 0 || newCol >= GRID_SIZE;
+            if (movedOutOfBounds) {
+                const currentPad = lilyPads.find(p => p.row === frogPosition.row && p.col === frogPosition.col);
+                let neededDirection = null;
+                if (deltaRow === -1) neededDirection = 'up';
+                if (deltaRow === 1) neededDirection = 'down';
+                if (deltaCol === -1) neededDirection = 'left';
+                if (deltaCol === 1) neededDirection = 'right';
+
+                if (!currentPad || !neededDirection || !currentPad.wrapDirections || !currentPad.wrapDirections.includes(neededDirection)) {
+                    return;
+                }
+
+                if (neededDirection === 'up') newRow = GRID_SIZE - 1;
+                if (neededDirection === 'down') newRow = 0;
+                if (neededDirection === 'left') newCol = GRID_SIZE - 1;
+                if (neededDirection === 'right') newCol = 0;
             }
             
             const targetPad = lilyPads.find(p => p.row === newRow && p.col === newCol);
