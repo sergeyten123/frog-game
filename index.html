@@ -57,13 +57,21 @@
         .lily-pad {
             position: relative;
             border-radius: 50%;
-            background: radial-gradient(circle at 30% 30%, #87CEEB, #4682B4);
+            background: radial-gradient(circle at 35% 35%, #f7b3c8, #e06a9f);
             transition: transform 0.1s linear, background 0.3s ease;
             box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
             display: flex;
             justify-content: center;
             align-items: center;
             transform-origin: center;
+            overflow: hidden;
+            /* Flower-like edge via mask (petal silhouette) */
+            -webkit-mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='32' fill='white'/><circle cx='82' cy='50' r='16' fill='white'/><circle cx='77.7' cy='66' r='16' fill='white'/><circle cx='66' cy='77.7' r='16' fill='white'/><circle cx='50' cy='82' r='16' fill='white'/><circle cx='34' cy='77.7' r='16' fill='white'/><circle cx='22.3' cy='66' r='16' fill='white'/><circle cx='18' cy='50' r='16' fill='white'/><circle cx='22.3' cy='34' r='16' fill='white'/><circle cx='34' cy='22.3' r='16' fill='white'/><circle cx='50' cy='18' r='16' fill='white'/><circle cx='66' cy='22.3' r='16' fill='white'/><circle cx='77.7' cy='34' r='16' fill='white'/></svg>");
+            mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='32' fill='white'/><circle cx='82' cy='50' r='16' fill='white'/><circle cx='77.7' cy='66' r='16' fill='white'/><circle cx='66' cy='77.7' r='16' fill='white'/><circle cx='50' cy='82' r='16' fill='white'/><circle cx='34' cy='77.7' r='16' fill='white'/><circle cx='22.3' cy='66' r='16' fill='white'/><circle cx='18' cy='50' r='16' fill='white'/><circle cx='22.3' cy='34' r='16' fill='white'/><circle cx='34' cy='22.3' r='16' fill='white'/><circle cx='50' cy='18' r='16' fill='white'/><circle cx='66' cy='22.3' r='16' fill='white'/><circle cx='77.7' cy='34' r='16' fill='white'/></svg>");
+            -webkit-mask-size: 100% 100%;
+            mask-size: 100% 100%;
+            -webkit-mask-repeat: no-repeat;
+            mask-repeat: no-repeat;
         }
 
         .lily-pad.warning {
@@ -72,18 +80,7 @@
 
         .lily-pad::before {
             content: '';
-            position: absolute;
-            width: 30%;
-            height: 30%;
-            background: #36648B;
-            border-radius: 50%;
-            top: 10%;
-            left: 10%;
-            opacity: 0.3;
-        }
-
-        .lily-pad.warning::before {
-            background: #8b0000;
+            display: none;
         }
 
         .lily-pad.gone {
@@ -537,11 +534,11 @@
             left: 50%;
             top: 10px;
             transform: translateX(-50%);
-            border-radius: 40px 40px 10px 10px;
+            border-radius: 70px 70px 34px 34px;
             background: radial-gradient(circle at 50% 20%, rgba(120, 170, 150, 0.35), rgba(20, 60, 40, 0.6));
-            border: 2px solid rgba(10, 35, 20, 0.7);
-            box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.35);
-            clip-path: polygon(0 60%, 8% 40%, 35% 20%, 50% 0, 65% 20%, 92% 40%, 100% 60%, 85% 100%, 15% 100%);
+            border: none;
+            box-shadow: inset 0 0 12px rgba(0, 0, 0, 0.12);
+            clip-path: polygon(0 70%, 12% 50%, 30% 32%, 50% 18%, 70% 32%, 88% 50%, 100% 70%, 85% 100%, 15% 100%);
         }
 
         .pike-mouth {
@@ -697,102 +694,44 @@
         const HAPPY_FROG_IMG = 'frog.png';
         const SAD_FROG_IMG = 'frog.png';
         
-        // Background music using Web Audio API
-        let musicOscillator = null;
-        let musicGainNode = null;
-        let musicLoopTimeout = null;
+        // Background music using HTML Audio
+        const BACKGROUND_MUSIC_FILE = 'Long Away Home.wav';
+        let backgroundMusicAudio = null;
         
         function startBackgroundMusic() {
-            if (!audioContext) return;
             try {
-                ensureAudioContext();
-                // Stop any existing music properly
                 stopBackgroundMusic();
-                if (audioContext.state !== 'running') {
-                    pendingStartMusic = true;
-                    return;
+
+                if (!backgroundMusicAudio) {
+                    backgroundMusicAudio = new Audio(BACKGROUND_MUSIC_FILE);
+                    backgroundMusicAudio.loop = true;
+                    backgroundMusicAudio.preload = 'auto';
+                    backgroundMusicAudio.volume = 0.35;
                 }
-                musicStarted = true;
-                
-                // Create a simple, pleasant background melody
-                musicGainNode = audioContext.createGain();
-                musicGainNode.gain.setValueAtTime(0.03, audioContext.currentTime); // Very quiet
-                musicGainNode.connect(audioContext.destination);
-                
-                // First phrase: D-C-D-A-C
-                playMusicNote(587, 0, 0.4);    // D
-                playMusicNote(523, 0.5, 0.4);  // C
-                playMusicNote(587, 1.0, 0.4);  // D
-                playMusicNote(440, 1.5, 0.4);  // A
-                playMusicNote(523, 2.0, 0.4);  // C
-                
-                // Pause (2.5 - 3.0)
-                
-                // Second phrase: A-G-A-E-G
-                playMusicNote(440, 3.0, 0.4);  // A
-                playMusicNote(392, 3.5, 0.4);  // G
-                playMusicNote(440, 4.0, 0.4);  // A
-                playMusicNote(330, 4.5, 0.4);  // E
-                playMusicNote(392, 5.0, 0.4);  // G
-                
-                // NO pause - immediately continue
-                
-                // Third phrase: D-C-D-A-C (repeat)
-                playMusicNote(587, 5.5, 0.4);  // D
-                playMusicNote(523, 6.0, 0.4);  // C
-                playMusicNote(587, 6.5, 0.4);  // D
-                playMusicNote(440, 7.0, 0.4);  // A
-                playMusicNote(523, 7.5, 0.4);  // C
-                
-                // Pause (8.0 - 8.5)
-                
-                // Fourth phrase: A-G-A-E-G (repeat)
-                playMusicNote(440, 8.5, 0.4);  // A
-                playMusicNote(392, 9.0, 0.4);  // G
-                playMusicNote(440, 9.5, 0.4);  // A
-                playMusicNote(330, 10.0, 0.4); // E
-                playMusicNote(392, 10.5, 0.4); // G
-                
-                // Pause then loop (11.0 - 11.5)
-                musicLoopTimeout = setTimeout(() => {
-                    if (gameActive) startBackgroundMusic();
-                }, 11500); // Total length: 10.9s + 0.5s gap
-            } catch(e) {}
-        }
-        
-        function playMusicNote(frequency, startOffset, duration) {
-            if (!audioContext || !musicGainNode) return;
-            try {
-                const osc = audioContext.createOscillator();
-                osc.type = 'sine';
-                osc.frequency.setValueAtTime(frequency, audioContext.currentTime + startOffset);
-                osc.connect(musicGainNode);
-                osc.start(audioContext.currentTime + startOffset);
-                osc.stop(audioContext.currentTime + startOffset + duration);
+
+                backgroundMusicAudio.currentTime = 0;
+                const playPromise = backgroundMusicAudio.play();
+                if (playPromise && typeof playPromise.then === 'function') {
+                    playPromise.then(() => {
+                        musicStarted = true;
+                        pendingStartMusic = false;
+                    }).catch(() => {
+                        musicStarted = false;
+                        pendingStartMusic = true;
+                    });
+                } else {
+                    musicStarted = true;
+                    pendingStartMusic = false;
+                }
             } catch(e) {}
         }
         
         function stopBackgroundMusic() {
-            // Clear the music loop timeout
-            if (musicLoopTimeout) {
-                clearTimeout(musicLoopTimeout);
-                musicLoopTimeout = null;
-            }
-            
-            // Stop oscillator if it exists
-            if (musicOscillator) {
+            if (backgroundMusicAudio) {
                 try {
-                    musicOscillator.stop();
+                    backgroundMusicAudio.pause();
+                    backgroundMusicAudio.currentTime = 0;
                 } catch(e) {}
-                musicOscillator = null;
-            }
-            
-            // Disconnect and clear gain node
-            if (musicGainNode) {
-                try {
-                    musicGainNode.disconnect();
-                } catch(e) {}
-                musicGainNode = null;
             }
             
             musicStarted = false;
