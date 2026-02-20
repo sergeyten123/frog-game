@@ -462,6 +462,22 @@
             color: #666;
         }
 
+        .pause-btn {
+            background: #1e88e5;
+            color: #fff;
+            border: none;
+            border-radius: 10px;
+            padding: 10px 14px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: transform 0.15s ease, background 0.2s ease;
+        }
+
+        .pause-btn:hover {
+            background: #1565c0;
+            transform: scale(1.03);
+        }
+
         .swipe-zone {
             display: none;
             align-items: center;
@@ -874,6 +890,7 @@
 
             .swipe-zone {
                 display: flex;
+                width: min(94vw, 640px);
             }
 
             .name-input-section input {
@@ -888,6 +905,14 @@
             }
         }
 
+        /* Buy Me a Coffee button placement */
+        #bmc-wbtn {
+            left: 14px !important;
+            right: auto !important;
+            bottom: calc(14px + env(safe-area-inset-bottom, 0px)) !important;
+            z-index: 120 !important;
+        }
+
     </style>
 </head>
 <body>
@@ -895,6 +920,7 @@
         <div class="ui">
             <div class="score">Time: <span id="score">0</span>s</div>
             <div class="flies"><svg width="24" height="24" viewBox="0 0 32 32" style="vertical-align: middle; margin-right: 5px;"><circle cx="16" cy="16" r="6" fill="#2C2C2C"/><ellipse cx="8" cy="12" rx="6" ry="5" fill="rgba(200,230,255,0.7)"/><ellipse cx="24" cy="12" rx="6" ry="5" fill="rgba(200,230,255,0.7)"/></svg> Flies: <span id="flyCount">0</span></div>
+            <button class="pause-btn" id="pauseBtn" onclick="togglePause()">Pause</button>
             <div class="instructions" style="margin-top: 20px; padding: 15px; background: #f0f0f0;">
                 <strong>Controls:</strong><br>
                 Arrow Keys to move 🐸<br>
@@ -989,6 +1015,10 @@
         let musicStarted = false;
         let pendingStartMusic = false;
         let pendingPredatorSound = false;
+        let isPaused = false;
+        let pausedAt = 0;
+        let pausedInvincibilityRemaining = 0;
+        let flyStartTimeout = null;
         
         // Frog image paths
         const HAPPY_FROG_IMG = 'frog.png';
@@ -1654,9 +1684,106 @@
             }
         }
 
+        function setPauseButtonState(label, disabled = false) {
+            const btn = document.getElementById('pauseBtn');
+            if (!btn) return;
+            btn.textContent = label;
+            btn.disabled = disabled;
+            btn.style.opacity = disabled ? '0.6' : '1';
+            btn.style.cursor = disabled ? 'default' : 'pointer';
+        }
+
+        function clearGameLoops() {
+            clearInterval(updateInterval);
+            clearInterval(timeInterval);
+            clearInterval(speedInterval);
+            clearInterval(flyInterval);
+            clearInterval(flyMoveInterval);
+            clearInterval(swordInterval);
+            if (flyStartTimeout) {
+                clearTimeout(flyStartTimeout);
+                flyStartTimeout = null;
+            }
+        }
+
+        function startGameLoops() {
+            updateInterval = setInterval(updateGame, UPDATE_INTERVAL);
+            timeInterval = setInterval(updateTime, 100);
+            speedInterval = setInterval(increaseSpeed, SPEED_INCREASE_INTERVAL);
+
+            if (flyPosition) {
+                flyInterval = setInterval(spawnFly, FLY_SPAWN_INTERVAL);
+                flyMoveInterval = setInterval(moveFlyToNeighbor, FLY_MOVE_INTERVAL);
+            } else {
+                flyStartTimeout = setTimeout(() => {
+                    if (!gameActive || isPaused) return;
+                    spawnFly();
+                    flyInterval = setInterval(spawnFly, FLY_SPAWN_INTERVAL);
+                    flyMoveInterval = setInterval(moveFlyToNeighbor, FLY_MOVE_INTERVAL);
+                    flyStartTimeout = null;
+                }, FLY_SPAWN_INTERVAL);
+            }
+
+            swordInterval = setInterval(spawnSword, SWORD_SPAWN_INTERVAL);
+        }
+
+        function shiftPadTimersBy(ms) {
+            for (const pad of lilyPads) {
+                if (pad.shrinkStartTime !== null) pad.shrinkStartTime += ms;
+                if (pad.warningStartTime !== null) pad.warningStartTime += ms;
+                if (pad.respawnTime !== null) pad.respawnTime += ms;
+            }
+        }
+
+        function pauseBackgroundMusic() {
+            if (!backgroundMusicAudio) return;
+            try { backgroundMusicAudio.pause(); } catch(e) {}
+        }
+
+        function resumeBackgroundMusic() {
+            if (!backgroundMusicAudio || !currentBackgroundTrack) return;
+            const playPromise = backgroundMusicAudio.play();
+            if (playPromise && typeof playPromise.then === 'function') {
+                playPromise.catch(() => {
+                    pendingStartMusic = true;
+                });
+            }
+        }
+
+        function pauseGame() {
+            if (!gameActive || isPaused) return;
+            isPaused = true;
+            pausedAt = Date.now();
+            pausedInvincibilityRemaining = Math.max(0, invincibleUntil - pausedAt);
+            clearGameLoops();
+            pauseBackgroundMusic();
+            setPauseButtonState('Continue');
+        }
+
+        function resumeGame() {
+            if (!gameActive || !isPaused) return;
+            const now = Date.now();
+            const pausedDuration = now - pausedAt;
+            startTime += pausedDuration;
+            shiftPadTimersBy(pausedDuration);
+            invincibleUntil = pausedInvincibilityRemaining > 0 ? (now + pausedInvincibilityRemaining) : 0;
+            pausedInvincibilityRemaining = 0;
+            isPaused = false;
+            startGameLoops();
+            resumeBackgroundMusic();
+            setPauseButtonState('Pause');
+        }
+
+        function togglePause() {
+            if (!gameActive) return;
+            if (isPaused) resumeGame();
+            else pauseGame();
+        }
+
         function initGame() {
             const pond = document.getElementById('pond');
             pond.innerHTML = '';
+            clearGameLoops();
             lilyPads = [];
             frogPosition = { row: 2, col: 2 };
             score = 0;
@@ -1664,6 +1791,10 @@
             invincibleUntil = 0;
             swordPosition = null;
             resetBackgroundMusicPlaylist();
+            isPaused = false;
+            pausedAt = 0;
+            pausedInvincibilityRemaining = 0;
+            setPauseButtonState('Pause');
             
             const now = Date.now();
             
@@ -1763,27 +1894,16 @@
             document.getElementById('flyCount').textContent = fliesEaten;
             document.getElementById('gameOver').classList.remove('show');
             
-            updateInterval = setInterval(updateGame, UPDATE_INTERVAL);
-            timeInterval = setInterval(updateTime, 100);
-            speedInterval = setInterval(increaseSpeed, SPEED_INCREASE_INTERVAL);
-            
             // Start background music
             startBackgroundMusic();
-            
-            // Spawn first fly after 8 seconds, then move it every second
-            flyPosition = null;
-            setTimeout(() => {
-                spawnFly();
-                flyInterval = setInterval(spawnFly, FLY_SPAWN_INTERVAL);
-                flyMoveInterval = setInterval(moveFlyToNeighbor, FLY_MOVE_INTERVAL);
-            }, FLY_SPAWN_INTERVAL);
 
-            // Spawn sword power-up every 30 seconds
-            swordInterval = setInterval(spawnSword, SWORD_SPAWN_INTERVAL);
+            // Spawn first fly after delay and run all ticking loops.
+            flyPosition = null;
+            startGameLoops();
         }
 
         function updateGame() {
-            if (!gameActive) return;
+            if (!gameActive || isPaused) return;
             
             const now = Date.now();
             let frogPadGone = false;
@@ -1969,14 +2089,11 @@
         function startPredatorSequence() {
             if (!gameActive) return;
             gameActive = false;
-            clearInterval(updateInterval);
-            clearInterval(timeInterval);
-            clearInterval(speedInterval);
-            clearInterval(flyInterval);
-            clearInterval(flyMoveInterval);
-            clearInterval(swordInterval);
+            isPaused = false;
+            clearGameLoops();
             clearSword();
             invincibleUntil = 0;
+            setPauseButtonState('Pause', true);
             
             // Stop background music
             stopBackgroundMusic();
@@ -2028,7 +2145,7 @@
         }
 
         function moveFrog(deltaRow, deltaCol) {
-            if (!gameActive) return;
+            if (!gameActive || isPaused) return;
             
             let newRow = frogPosition.row + deltaRow;
             let newCol = frogPosition.col + deltaCol;
@@ -2091,7 +2208,7 @@
         }
 
         function updateTime() {
-            if (!gameActive) return;
+            if (!gameActive || isPaused) return;
             const elapsed = Math.floor((Date.now() - startTime) / 1000);
             score = elapsed;
             document.getElementById('score').textContent = score;
@@ -2112,14 +2229,11 @@
             if (eyes) eyes.classList.remove('show');
             
             gameActive = false;
-            clearInterval(updateInterval);
-            clearInterval(timeInterval);
-            clearInterval(speedInterval);
-            clearInterval(flyInterval);
-            clearInterval(flyMoveInterval);
-            clearInterval(swordInterval);
+            isPaused = false;
+            clearGameLoops();
             clearSword();
             invincibleUntil = 0;
+            setPauseButtonState('Pause', true);
             
             // Stop background music
             stopBackgroundMusic();
@@ -2145,12 +2259,7 @@
         }
 
         function restartGame() {
-            clearInterval(updateInterval);
-            clearInterval(timeInterval);
-            clearInterval(speedInterval);
-            clearInterval(flyInterval);
-            clearInterval(flyMoveInterval);
-            clearInterval(swordInterval);
+            clearGameLoops();
             document.getElementById('nameInputSection').classList.remove('show');
             document.getElementById('playerName').value = '';
             initGame();
@@ -2159,7 +2268,7 @@
         function unlockAudioAndMaybeStartMusic() {
             ensureAudioContext();
             if (audioContext && audioContext.state === 'running') {
-                if (gameActive && (!musicStarted || pendingStartMusic)) {
+                if (gameActive && !isPaused && (!musicStarted || pendingStartMusic)) {
                     startBackgroundMusic();
                     pendingStartMusic = false;
                 }
@@ -2171,7 +2280,7 @@
         }
 
         function handleDirectionalInput(direction) {
-            if (!gameActive) return;
+            if (!gameActive || isPaused) return;
             switch(direction) {
                 case 'up':
                     moveFrog(-1, 0);
@@ -2287,6 +2396,7 @@
 
         initGame();
     </script>
+    <script type="text/javascript" src="https://cdnjs.buymeacoffee.com/1.0.0/button.prod.min.js" data-name="bmc-button" data-slug="sergyten123" data-color="#40DCA5" data-emoji="" data-font="Cookie" data-text="Buy me a coffee" data-outline-color="#000000" data-font-color="#ffffff" data-coffee-color="#FFDD00"></script>
 </body>
 </html>
 
