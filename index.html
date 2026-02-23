@@ -683,7 +683,7 @@
         }
 
         .frog.sinking {
-            animation: frogSink 4.5s ease-in forwards;
+            animation: frogSink 2.25s ease-in forwards;
         }
 
         @keyframes frogSink {
@@ -707,7 +707,7 @@
         }
 
         .pike-eyes.show {
-            animation: pikeRise 4.5s ease-out forwards;
+            animation: pikeRise 6.75s ease-out forwards;
         }
 
         .pike-eye {
@@ -835,7 +835,7 @@
         @keyframes pikeRise {
             0% {
                 opacity: 0;
-                transform: translate(-50%, 100%) scale(0.4);
+                transform: translate(-50%, 145%) scale(0.18);
             }
             100% {
                 opacity: 1;
@@ -991,7 +991,7 @@
         const FLY_MOVE_INTERVAL = 2000; // Fly moves to neighboring leaf every 2 seconds
         const SWORD_SPAWN_INTERVAL = 30000; // Spawn sword every 30 seconds
         const INVINCIBILITY_DURATION = 5000; // 5 seconds
-        const PREDATOR_DURATION = 4500; // 4.5 seconds of danger sequence (50% slower)
+        const PREDATOR_DURATION = 6750; // Monster ascent duration (6.75s)
         
         let gameActive = false;
         let score = 0;
@@ -2001,8 +2001,7 @@
                 if (isInvincible()) {
                     updateFrogPosition();
                 } else {
-                    showFrogOnEmpty(frogPosition.row, frogPosition.col);
-                    startPredatorSequence();
+                    startPredatorSequence(frogPosition.row, frogPosition.col);
                 }
             }
 
@@ -2086,8 +2085,19 @@
             applyFrogInvincibleVisual();
         }
 
-        function startPredatorSequence() {
+        function startPredatorSequence(row = frogPosition.row, col = frogPosition.col) {
             if (!gameActive) return;
+            showFrogOnEmpty(row, col, true);
+            if (predatorFrog) {
+                predatorFrog.addEventListener('animationend', () => {
+                    if (!predatorTimeout) return;
+                    const eyesNow = document.getElementById('pikeEyes');
+                    if (eyesNow) eyesNow.style.animationPlayState = 'paused';
+                    clearTimeout(predatorTimeout);
+                    predatorTimeout = null;
+                    endGame();
+                }, { once: true });
+            }
             gameActive = false;
             isPaused = false;
             clearGameLoops();
@@ -2126,10 +2136,12 @@
                     const centerX = frogRect.left - pondRect.left + frogRect.width / 2;
                     const centerY = frogRect.top - pondRect.top + frogRect.height / 2;
                     eyes.style.left = centerX + 'px';
-                    eyes.style.top = (centerY - 70) + 'px';
+                    // Lower monster path slightly (~0.7 cm total on most phone screens).
+                    eyes.style.top = (centerY - 43) + 'px';
                 }
                 // Restart animation if it was running
                 eyes.classList.remove('show');
+                eyes.style.animationPlayState = 'running';
                 void eyes.offsetWidth;
                 eyes.classList.add('show');
             }
@@ -2184,8 +2196,7 @@
                         collectSword();
                     }
                 } else {
-                    showFrogOnEmpty(newRow, newCol);
-                    startPredatorSequence();
+                    startPredatorSequence(newRow, newCol);
                 }
                 return;
             }
@@ -2263,24 +2274,28 @@
             document.getElementById('nameInputSection').classList.remove('show');
             document.getElementById('playerName').value = '';
             initGame();
+            // Force an immediate start attempt inside the Play Again click gesture.
+            startBackgroundMusic();
         }
 
         function unlockAudioAndMaybeStartMusic() {
             ensureAudioContext();
-            if (audioContext && audioContext.state === 'running') {
-                if (gameActive && !isPaused && (!musicStarted || pendingStartMusic)) {
-                    startBackgroundMusic();
-                    pendingStartMusic = false;
-                }
-                if (pendingPredatorSound) {
-                    playPredatorRiseSound();
-                    pendingPredatorSound = false;
-                }
+            // Background music is HTML audio and should not depend on WebAudio state.
+            if (gameActive && !isPaused && (!musicStarted || pendingStartMusic)) {
+                startBackgroundMusic();
+            }
+
+            if (audioContext && audioContext.state === 'running' && pendingPredatorSound) {
+                playPredatorRiseSound();
+                pendingPredatorSound = false;
             }
         }
 
         function handleDirectionalInput(direction) {
             if (!gameActive || isPaused) return;
+            if (!musicStarted || pendingStartMusic) {
+                startBackgroundMusic();
+            }
             switch(direction) {
                 case 'up':
                     moveFrog(-1, 0);
